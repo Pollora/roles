@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-15
+
 ### Added
 
 - The roles classes of the Pollora framework as a package of their own, class names unchanged: `RoleDefinitionBuilder`, `RoleRegistry`, `RoleCompiler`, `PostTypeCapabilityMap`, the capability readers, the WordPress adapters (the stored roles, `WP_Roles` injection, label translation, the users who carry a role) and `RoleDiscovery`
