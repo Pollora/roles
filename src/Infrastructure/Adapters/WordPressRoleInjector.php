@@ -53,6 +53,10 @@ final class WordPressRoleInjector
             $this->warnings[] = $message;
         };
 
+        foreach ($this->registry->refusals() as $refusal) {
+            $warn($refusal);
+        }
+
         $roles = $this->compiler->compile(
             $wpRoles->roles,
             $this->registry->definitions($warn),

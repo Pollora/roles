@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Pollora\Role\Application\Services;
 
 use Closure;
+use LogicException;
 use Pollora\Role\Domain\Enums\Access;
 use Pollora\Role\Domain\Exceptions\InvalidRoleDefinitionException;
 use Pollora\Role\Domain\Models\RoleChanges;
@@ -37,10 +38,47 @@ final class RoleRegistry
     /** @var list<string> */
     private array $capabilitySets = [];
 
+    /** @var list<RoleDeclaration> Fluent declarations, checked when the roles are first read */
+    private array $pending = [];
+
+    /** @var list<string> Why a fluent declaration was refused */
+    private array $refusals = [];
+
+    /**
+     * @param  RoleDefinitionBuilder|null  $builder  Checks the fluent declarations; without it, only classes with attributes can be added
+     */
     public function __construct(
         private readonly CapabilityOwnerReader $owners,
         private readonly PostTypeCapabilityMap $postTypeCapabilities,
+        private readonly ?RoleDefinitionBuilder $builder = null,
     ) {}
+
+    /**
+     * Adds a declaration written with the fluent API. It is checked and added when the roles are
+     * first read, once its chain is complete; a mistake is kept in refusals(), not thrown.
+     *
+     * @throws LogicException When the registry was built without a builder
+     */
+    public function declare(RoleDeclaration $declaration): void
+    {
+        if (! $this->builder instanceof RoleDefinitionBuilder) {
+            throw new LogicException('This registry has no RoleDefinitionBuilder to check a fluent declaration with.');
+        }
+
+        $this->pending[] = $declaration;
+    }
+
+    /**
+     * Why fluent declarations were refused, each naming the call that made it.
+     *
+     * @return list<string>
+     */
+    public function refusals(): array
+    {
+        $this->settle();
+
+        return $this->refusals;
+    }
 
     /**
      * @throws InvalidRoleDefinitionException When the slug is taken or the inheritance loops
@@ -145,7 +183,7 @@ final class RoleRegistry
 
     public function isEmpty(): bool
     {
-        return $this->definitions === [] && $this->modifications === [] && $this->postTypes === [] && $this->taxonomies === [] && $this->capabilitySets === [];
+        return $this->pending === [] && $this->definitions === [] && $this->modifications === [] && $this->postTypes === [] && $this->taxonomies === [] && $this->capabilitySets === [];
     }
 
     /**
@@ -156,6 +194,8 @@ final class RoleRegistry
      */
     public function definitions(?Closure $warn = null): array
     {
+        $this->settle();
+
         return array_values(array_map(
             fn (RoleDefinition $definition): RoleDefinition => $definition->withChanges($this->resolve($definition->changes, $definition->declaringClass, $warn)),
             $this->definitions
@@ -170,6 +210,8 @@ final class RoleRegistry
      */
     public function modifications(?Closure $warn = null): array
     {
+        $this->settle();
+
         return array_map(
             fn (RoleModification $modification): RoleModification => $modification->withChanges($this->resolve($modification->changes, $modification->declaringClass, $warn)),
             $this->modifications
@@ -183,6 +225,8 @@ final class RoleRegistry
      */
     public function labelDomains(): array
     {
+        $this->settle();
+
         $domains = [];
 
         foreach ($this->definitions as $definition) {
@@ -212,6 +256,28 @@ final class RoleRegistry
         }
 
         return array_values(array_unique($capabilities));
+    }
+
+    /**
+     * Checks and adds the fluent declarations waiting, once.
+     */
+    private function settle(): void
+    {
+        if ($this->pending === [] || ! $this->builder instanceof RoleDefinitionBuilder) {
+            return;
+        }
+
+        $pending = $this->pending;
+        $this->pending = [];
+
+        foreach ($pending as $declaration) {
+            try {
+                $built = $this->builder->assemble($declaration);
+                $built instanceof RoleDefinition ? $this->addRole($built) : $this->addModification($built);
+            } catch (\Throwable $throwable) {
+                $this->refusals[] = $throwable->getMessage();
+            }
+        }
     }
 
     /**

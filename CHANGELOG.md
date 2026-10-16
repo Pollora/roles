@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Roles and capabilities can be declared with a fluent API besides the attributes: `Role::make('slug', 'Label')`, `Role::modify('slug')` and `Role::capabilitySet()`, with `inherits()`, `grants()`, `without()`, `grantsPostType()`, `grantsTaxonomy()`, `allowSensitive()` and `textDomain()`. They carry the names of the attributes and of their arguments
+- `RoleDeclarer`, the calls behind `Role` that a framework can bind to its own facade, and `WordPressLateRefresh`, which hands a role declared late to WordPress
+- `Role::manager()`, `Role::useLogger()` and `Role::reset()` to wire it to WordPress without Laravel; the declarations are checked and handed to `WP_Roles` lazily, and a role declared later reaches WordPress on `init`
+- `RoleDeclaration`, what attributes and the fluent API both fill, and `RoleDefinitionBuilder::assemble()`, which checks it: one code for both, so a mistake is refused with the same reason. A parity test keeps the two in step
+- `RoleRegistry::declare()` and `RoleRegistry::refusals()`, with an optional `RoleDefinitionBuilder` as third argument of the constructor (existing wiring is unchanged)
+
+### Changed
+
+- `declaringClass` of a definition declared with the fluent API is the call (`Role::make('slug') at file:line`), not a class; its type is `string`
+
 ## [0.1.0] - 2026-10-15
 
 ### Added
