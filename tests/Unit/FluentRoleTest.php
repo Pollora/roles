@@ -6,6 +6,8 @@ use Brain\Monkey\Actions;
 use Brain\Monkey\Functions;
 use Pollora\Role\Application\Services\CapabilityOwnerReader;
 use Pollora\Role\Application\Services\RoleDeclaration;
+use Pollora\Role\Application\Services\RoleDeclarer;
+use Pollora\Role\Application\Services\RoleDefinitionBuilder;
 use Pollora\Role\Application\Services\RoleRegistry;
 use Pollora\Role\Domain\Enums\Access;
 use Pollora\Role\Domain\Services\PostTypeCapabilityMap;
@@ -151,4 +153,22 @@ it('does not schedule a refresh while WordPress has no roles yet', function (): 
     Role::make('usher', 'Usher');
 
     expect(array_filter($scheduled, static fn (array $hook): bool => $hook[1] === 0))->toBeEmpty();
+});
+
+it('declares through a RoleDeclarer on a registry of its own, and tells who listens after each declaration', function (): void {
+    $owners = new CapabilityOwnerReader;
+    $registry = new RoleRegistry($owners, new PostTypeCapabilityMap, new RoleDefinitionBuilder($owners));
+    $calls = 0;
+    $declarer = new RoleDeclarer($registry, function () use (&$calls): void {
+        $calls++;
+    });
+
+    $declarer->make('usher', 'Usher')->inherits('author');
+    $declarer->modify('editor')->grants('moderate_comments');
+    $declarer->capabilitySet(EventCap::class);
+
+    expect($calls)->toBe(3)
+        ->and($registry->definitions()[0]->declaringClass)->toBe("Role::make('usher') at ".__FILE__.':'.(__LINE__ - 6))
+        ->and($registry->modifications())->toHaveCount(1)
+        ->and($registry->declaredCapabilities())->toBe(['export_attendees', 'scan_tickets']);
 });

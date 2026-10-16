@@ -7,14 +7,15 @@ namespace Pollora\Role;
 use BackedEnum;
 use Pollora\Role\Application\Services\CapabilityOwnerReader;
 use Pollora\Role\Application\Services\RoleDeclaration;
+use Pollora\Role\Application\Services\RoleDeclarer;
 use Pollora\Role\Application\Services\RoleDefinitionBuilder;
 use Pollora\Role\Application\Services\RoleRegistry;
 use Pollora\Role\Domain\Services\PostTypeCapabilityMap;
 use Pollora\Role\Domain\Services\RoleCompiler;
+use Pollora\Role\Infrastructure\Adapters\WordPressLateRefresh;
 use Pollora\Role\Infrastructure\Adapters\WordPressRoleInjector;
 use Pollora\Role\Infrastructure\Adapters\WordPressRoleLabelTranslator;
 use Psr\Log\LoggerInterface;
-use WP_Roles;
 
 /**
  * Declares roles and capabilities in code for a WordPress theme or plugin that is not a Pollora application: a classic theme, a plugin, a Bedrock site.
@@ -41,14 +42,14 @@ final class Role
 
     private static ?LoggerInterface $logger = null;
 
-    private static bool $refreshScheduled = false;
+    private static ?RoleDeclarer $declarer = null;
 
     /**
      * Declares a role.
      */
     public static function make(string $slug, string $label): RoleDeclaration
     {
-        return self::declare(new RoleDeclaration($slug, $label, false, sprintf("Role::make('%s') at %s", $slug, self::caller())));
+        return self::declarer()->make($slug, $label);
     }
 
     /**
@@ -56,7 +57,7 @@ final class Role
      */
     public static function modify(string $slug): RoleDeclaration
     {
-        return self::declare(new RoleDeclaration($slug, null, true, sprintf("Role::modify('%s') at %s", $slug, self::caller())));
+        return self::declarer()->modify($slug);
     }
 
     /**
@@ -66,12 +67,7 @@ final class Role
      */
     public static function capabilitySet(string|array $capabilities): void
     {
-        $names = is_array($capabilities)
-            ? $capabilities
-            : array_map(static fn (BackedEnum $case): string => (string) $case->value, $capabilities::cases());
-
-        self::manager()->addCapabilitySet($names);
-        self::refreshLater();
+        self::declarer()->capabilitySet($capabilities);
     }
 
     /**
@@ -98,49 +94,14 @@ final class Role
         self::$registry = null;
         self::$injector = null;
         self::$logger = null;
-        self::$refreshScheduled = false;
+        self::$declarer = null;
     }
 
-    private static function declare(RoleDeclaration $declaration): RoleDeclaration
+    private static function declarer(): RoleDeclarer
     {
-        self::manager()->declare($declaration);
-        self::refreshLater();
+        self::manager();
 
-        return $declaration;
-    }
-
-    /**
-     * Roles declared once WordPress has built `WP_Roles` are injected into it once, early on `init`.
-     */
-    private static function refreshLater(): void
-    {
-        if (self::$refreshScheduled || ! ($GLOBALS['wp_roles'] ?? null) instanceof WP_Roles) {
-            return;
-        }
-
-        $hook = match (true) {
-            \did_action('init') === 0 => 'init',
-            \did_action('wp_loaded') === 0 => 'wp_loaded',
-            default => null,
-        };
-
-        if ($hook === null) {
-            return;
-        }
-
-        self::$refreshScheduled = true;
-        $injector = self::$injector;
-        \add_action($hook, static function () use ($injector): void {
-            self::$refreshScheduled = false;
-            $injector?->refresh();
-        }, 0);
-    }
-
-    private static function caller(): string
-    {
-        $frame = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3)[1] ?? [];
-
-        return sprintf('%s:%d', $frame['file'] ?? 'unknown', $frame['line'] ?? 0);
+        return self::$declarer;
     }
 
     private static function build(): RoleRegistry
@@ -154,6 +115,8 @@ final class Role
         \add_action('wp_roles_init', [self::$injector, 'inject'], 1);
         \add_action('init', [self::$injector, 'reportWarnings'], PHP_INT_MAX);
         \add_filter('gettext_with_context_default', [new WordPressRoleLabelTranslator($registry), 'translate'], 10, 3);
+
+        self::$declarer = new RoleDeclarer($registry, (new WordPressLateRefresh(self::$injector))->__invoke(...));
 
         return $registry;
     }
