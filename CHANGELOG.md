@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 ### Added
 
 - Roles and capabilities can be declared with a fluent API besides the attributes: `Role::make('slug', 'Label')`, `Role::modify('slug')` and `Role::capabilitySet()`, with `inherits()`, `grants()`, `without()`, `grantsPostType()`, `grantsTaxonomy()`, `allowSensitive()` and `textDomain()`. They carry the names of the attributes and of their arguments
