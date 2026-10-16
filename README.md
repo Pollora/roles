@@ -43,6 +43,34 @@ final class EventManager {}
 
 The role starts from the capabilities of the role it `inherits`, adds what it grants (a post type's or a taxonomy's own capabilities by class or slug, or any capability by name or from a backed enum marked `#[CapabilitySet]`), and drops what it is `Without`. Without a `label`, it is the class name as words (`Event Manager`). `#[ModifyRole('editor')]` takes the same attributes to adjust a role that is not yours. The super roles (`['administrator']` above, `roles.super_roles` in a Pollora application) receive every capability the code declares.
 
+### Declaring with the fluent API
+
+The same roles can be declared by calling `Role` instead of writing a class. It takes the names of the attributes and of their arguments, and it is checked by the same code: a mistake is refused with the same reason.
+
+```php
+use Pollora\Role\Domain\Enums\Access;
+use Pollora\Role\Role;
+
+Role::make('event_manager', 'Event manager')      // #[Role('event_manager', label: 'Event manager')]
+    ->inherits('author')                           // a slug, or the class of a #[Role]
+    ->grantsPostType(Event::class, Access::Editor) // #[GrantsPostType]: a class or a slug
+    ->grantsTaxonomy(Genre::class)                 // #[GrantsTaxonomy]
+    ->grants('export_attendees', EventCap::ScanTickets) // #[Grants]: names or backed enums
+    ->without('publish_posts')                     // #[Without]
+    ->allowSensitive()                             // allowSensitive: true
+    ->textDomain('my-theme');                      // textDomain: 'my-theme'
+
+Role::modify('editor')                             // #[ModifyRole('editor')]
+    ->grants('scan_tickets')
+    ->without('edit_theme_options');
+
+Role::capabilitySet(EventCap::class);              // #[CapabilitySet]: a backed enum, or a list of names
+```
+
+There is nothing to register and nothing to end the chain with: a declaration is checked when WordPress builds its roles, so a chain can be written in any order. A role declared after that (in a theme's `functions.php`) reaches WordPress on `init`; one declared after `wp_loaded` waits for the next load. A declaration that is refused is left out, and the reason, naming the call (`Role::make('meddler') at /path/to/file.php:12`), is logged as a warning.
+
+`Role::manager()` gives the registry the declarations go into, `Role::useLogger()` sets where warnings go (before the first call), and `Role::reset()` forgets everything, for tests. In a Pollora application the `Role` facade does the same and the framework wires it for you.
+
 ## Wiring it outside Pollora
 
 Point the discovery engine at your code and add `RoleDiscovery`, then hand the roles to WordPress when it builds `WP_Roles`:

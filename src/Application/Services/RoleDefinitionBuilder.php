@@ -53,6 +53,50 @@ final readonly class RoleDefinitionBuilder
      */
     public function build(string $class): RoleDefinition|RoleModification
     {
+        return $this->assemble($this->declarationOf($class));
+    }
+
+    /**
+     * Checks a declaration, however it was written, and turns it into a definition or a modification.
+     *
+     * @throws InvalidRoleDefinitionException
+     */
+    public function assemble(RoleDeclaration $declaration): RoleDefinition|RoleModification
+    {
+        $source = $declaration->source();
+        $changes = $this->changes($declaration);
+
+        if ($declaration->isModification()) {
+            return new RoleModification($declaration->slug(), $changes, $source);
+        }
+
+        if (in_array($declaration->slug(), self::CORE_ROLES, true)) {
+            throw InvalidRoleDefinitionException::forClass($source, sprintf('"%s" is a core role; adjust it with #[ModifyRole(\'%s\')] instead of redeclaring it.', $declaration->slug(), $declaration->slug()));
+        }
+
+        $inherits = $declaration->inheritedRole() === null ? null : $this->resolveRoleSlug($source, $declaration->inheritedRole());
+
+        if ($inherits !== null && in_array($inherits, $this->superRoles, true)) {
+            throw InvalidRoleDefinitionException::forClass($source, sprintf('a role cannot inherit from the super role "%s".', $inherits));
+        }
+
+        return new RoleDefinition(
+            slug: $declaration->slug(),
+            label: $declaration->label() ?? Naming::headline(Naming::classBasename($source)),
+            inherits: $inherits,
+            changes: $changes,
+            declaringClass: $source,
+            textDomain: $declaration->labelDomain(),
+        );
+    }
+
+    /**
+     * Reads the attributes of a class into a declaration.
+     *
+     * @param  class-string  $class
+     */
+    private function declarationOf(string $class): RoleDeclaration
+    {
         $reflection = new ReflectionClass($class);
         $role = ($reflection->getAttributes(Role::class)[0] ?? null)?->newInstance();
         $modifyRole = ($reflection->getAttributes(ModifyRole::class)[0] ?? null)?->newInstance();
@@ -65,65 +109,72 @@ final readonly class RoleDefinitionBuilder
             throw InvalidRoleDefinitionException::forClass($class, 'it carries neither #[Role] nor #[ModifyRole].');
         }
 
-        $changes = $this->changes($reflection, $role->allowSensitive ?? $modifyRole->allowSensitive);
-
-        if ($modifyRole instanceof ModifyRole) {
-            return new RoleModification($modifyRole->slug, $changes, $class);
-        }
-
-        if (in_array($role->slug, self::CORE_ROLES, true)) {
-            throw InvalidRoleDefinitionException::forClass($class, sprintf('"%s" is a core role; adjust it with #[ModifyRole(\'%s\')] instead of redeclaring it.', $role->slug, $role->slug));
-        }
-
-        $inherits = $role->inherits === null ? null : $this->resolveRoleSlug($class, $role->inherits);
-
-        if ($inherits !== null && in_array($inherits, $this->superRoles, true)) {
-            throw InvalidRoleDefinitionException::forClass($class, sprintf('a role cannot inherit from the super role "%s".', $inherits));
-        }
-
-        return new RoleDefinition(
-            slug: $role->slug,
-            label: $role->label ?? Naming::headline(Naming::classBasename($class)),
-            inherits: $inherits,
-            changes: $changes,
-            declaringClass: $class,
-            textDomain: $role->textDomain,
+        $declaration = new RoleDeclaration(
+            $role instanceof Role ? $role->slug : $modifyRole->slug,
+            $role instanceof Role ? $role->label : null,
+            $modifyRole instanceof ModifyRole,
+            $class,
         );
+        $declaration->allowSensitive($role->allowSensitive ?? $modifyRole->allowSensitive);
+
+        if ($role instanceof Role) {
+            if ($role->inherits !== null) {
+                $declaration->inherits($role->inherits);
+            }
+
+            if ($role->textDomain !== null) {
+                $declaration->textDomain($role->textDomain);
+            }
+        }
+
+        foreach ($reflection->getAttributes(Grants::class) as $attribute) {
+            $declaration->grants(...$attribute->newInstance()->capabilities);
+        }
+
+        foreach ($reflection->getAttributes(Without::class) as $attribute) {
+            $declaration->without(...$attribute->newInstance()->capabilities);
+        }
+
+        foreach ($reflection->getAttributes(GrantsPostType::class) as $attribute) {
+            $grant = $attribute->newInstance();
+            $declaration->grantsPostType($grant->postType, $grant->access);
+        }
+
+        foreach ($reflection->getAttributes(GrantsTaxonomy::class) as $attribute) {
+            $declaration->grantsTaxonomy($attribute->newInstance()->taxonomy);
+        }
+
+        return $declaration;
     }
 
-    /**
-     * @param  ReflectionClass<object>  $reflection
-     */
-    private function changes(ReflectionClass $reflection, bool $allowSensitive): RoleChanges
+    private function changes(RoleDeclaration $declaration): RoleChanges
     {
-        $class = $reflection->getName();
-        $grants = $this->capabilities($reflection, Grants::class);
-        $removals = $this->capabilities($reflection, Without::class);
+        $source = $declaration->source();
+        $grants = $this->names($declaration->grantedCapabilities());
+        $removals = $this->names($declaration->removedCapabilities());
 
         $both = array_intersect($grants, $removals);
         if ($both !== []) {
-            throw InvalidRoleDefinitionException::forClass($class, sprintf('"%s" is both granted and removed.', implode('", "', $both)));
+            throw InvalidRoleDefinitionException::forClass($source, sprintf('"%s" is both granted and removed.', implode('", "', $both)));
         }
 
         $sensitive = array_intersect($grants, self::SENSITIVE_CAPABILITIES);
-        if ($sensitive !== [] && ! $allowSensitive) {
-            throw InvalidRoleDefinitionException::forClass($class, sprintf(
+        if ($sensitive !== [] && ! $declaration->confirmsSensitive()) {
+            throw InvalidRoleDefinitionException::forClass($source, sprintf(
                 'granting "%s" lets a user take over the site; confirm it with allowSensitive: true.',
                 implode('", "', $sensitive)
             ));
         }
 
         $postTypeGrants = [];
-        foreach ($reflection->getAttributes(GrantsPostType::class) as $attribute) {
-            $grant = $attribute->newInstance();
-            $this->assertPostTypeHasCapabilities($class, $grant->postType);
-            $postTypeGrants[] = ['postType' => $grant->postType, 'access' => $grant->access];
+        foreach ($declaration->postTypeGrants() as $grant) {
+            $this->assertPostTypeHasCapabilities($source, $grant['postType']);
+            $postTypeGrants[] = $grant;
         }
 
         $taxonomyGrants = [];
-        foreach ($reflection->getAttributes(GrantsTaxonomy::class) as $attribute) {
-            $taxonomy = $attribute->newInstance()->taxonomy;
-            $this->assertTaxonomyHasCapabilities($class, $taxonomy);
+        foreach ($declaration->taxonomyGrants() as $taxonomy) {
+            $this->assertTaxonomyHasCapabilities($source, $taxonomy);
             $taxonomyGrants[] = $taxonomy;
         }
 
@@ -131,21 +182,12 @@ final readonly class RoleDefinitionBuilder
     }
 
     /**
-     * @param  ReflectionClass<object>  $reflection
-     * @param  class-string<Grants|Without>  $attributeClass
+     * @param  list<string|BackedEnum>  $capabilities
      * @return list<string>
      */
-    private function capabilities(ReflectionClass $reflection, string $attributeClass): array
+    private function names(array $capabilities): array
     {
-        $capabilities = [];
-
-        foreach ($reflection->getAttributes($attributeClass) as $attribute) {
-            foreach ($attribute->newInstance()->capabilities as $capability) {
-                $capabilities[] = $capability instanceof BackedEnum ? (string) $capability->value : $capability;
-            }
-        }
-
-        return $capabilities;
+        return array_map(static fn (string|BackedEnum $capability): string => $capability instanceof BackedEnum ? (string) $capability->value : $capability, $capabilities);
     }
 
     private function resolveRoleSlug(string $class, string $reference): string

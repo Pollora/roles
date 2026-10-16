@@ -10,7 +10,7 @@ namespace Pollora\Role\Domain\Models;
 final readonly class RoleDefinition
 {
     /**
-     * @param  class-string  $declaringClass
+     * @param  string  $declaringClass  The class that declares it, or the call that does
      */
     public function __construct(
         public string $slug,
