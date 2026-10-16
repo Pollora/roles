@@ -168,7 +168,7 @@ it('declares through a RoleDeclarer on a registry of its own, and tells who list
     $declarer->capabilitySet(EventCap::class);
 
     expect($calls)->toBe(3)
-        ->and($registry->definitions()[0]->declaringClass)->toBe("Role::make('usher') at ".__FILE__.':'.(__LINE__ - 6))
+        ->and($registry->definitions()[0]->declaringClass)->toBe("Role::make('usher') at ".__FILE__.':'.(__LINE__ - 5))
         ->and($registry->modifications())->toHaveCount(1)
         ->and($registry->declaredCapabilities())->toBe(['export_attendees', 'scan_tickets']);
 });
