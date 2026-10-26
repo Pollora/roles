@@ -10,7 +10,6 @@
     },
     "observed": [
         "Rector",
-        "Dependency analysis",
-        "Security patterns"
+        "Dependency analysis"
     ]
 }
