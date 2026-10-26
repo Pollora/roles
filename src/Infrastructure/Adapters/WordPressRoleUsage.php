@@ -68,7 +68,7 @@ final class WordPressRoleUsage implements RoleUsageInterface
         $this->capabilities = [];
 
         foreach ($rows as $row) {
-            $value = \is_serialized($row->meta_value) ? @unserialize(trim($row->meta_value), ['allowed_classes' => false]) : null;
+            $value = \is_serialized($row->meta_value) ? @unserialize(trim($row->meta_value), ['allowed_classes' => false]) : null; // nosemgrep -- allowed_classes is false: no object can be instantiated
             $this->capabilities[(int) $row->user_id] = is_array($value) ? $value : [];
         }
 
