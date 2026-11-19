@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Accepts `pollora/discovery` 0.2 (`^0.1 || ^0.2 || ^1.0`)
+
 ## [0.2.0] - 2026-10-16
 
 ### Added
