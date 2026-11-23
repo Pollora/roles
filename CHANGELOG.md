@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An integration suite (`tests/Integration`, `composer test:integration`) that runs the package against the `WP_Roles`, capabilities, options and users of a real WordPress. It is kept out of the default test run and out of the Composer archive.
 
+### Changed
+
+- Accepts `pollora/discovery` ^0.3 (`^0.1 || ^0.2 || ^0.3 || ^1.0`)
+
 ## [0.2.1] - 2026-11-19
 
 ### Changed
