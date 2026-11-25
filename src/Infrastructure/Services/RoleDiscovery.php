@@ -77,10 +77,10 @@ final class RoleDiscovery implements DiscoveryInterface
             try {
                 match ($kind) {
                     'role' => $this->addRole($class),
-                    'capabilitySet' => $this->registry->addCapabilitySet(array_map(
+                    'capabilitySet' => $this->registry->addCapabilitySet(array_values(array_map(
                         static fn (BackedEnum $case): string => (string) $case->value,
                         $class::cases()
-                    )),
+                    ))),
                     'postType' => $this->registry->addPostType($class),
                     'taxonomy' => $this->registry->addTaxonomy($class),
                 };
