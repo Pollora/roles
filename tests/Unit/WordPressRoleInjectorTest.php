@@ -49,6 +49,21 @@ it('puts the compiled roles, role objects and names into WP_Roles', function ():
         ->and($wpRoles->role_objects['event_manager']->capabilities)->not->toHaveKey('publish_posts');
 });
 
+it('reads the roles another plugin stored loosely in the shape the compiler works with', function (): void {
+    $this->registry->addRole((new RoleDefinitionBuilder(new CapabilityOwnerReader))->build(EventManager::class));
+    $wpRoles = wpRolesWith([
+        ...$this->stored,
+        'legacy' => ['capabilities' => ['read' => 1, 'edit_posts' => 0]],
+        'broken' => 'not a role',
+    ]);
+
+    $this->injector->inject($wpRoles);
+
+    expect($wpRoles->roles['legacy'])->toBe(['name' => 'legacy', 'capabilities' => ['read' => true, 'edit_posts' => false]])
+        ->and($wpRoles->roles['broken'])->toBe(['name' => 'broken', 'capabilities' => []])
+        ->and($wpRoles->roles['author'])->toBe($this->stored['author']);
+});
+
 it('leaves WP_Roles alone when the project declares nothing', function (): void {
     $wpRoles = wpRolesWith($this->stored);
 
