@@ -16,6 +16,7 @@ use Pollora\Discovery\Domain\Contracts\ReflectionCacheInterface;
 use Pollora\Discovery\Domain\Services\IsDiscovery;
 use Pollora\Role\Application\Services\RoleDefinitionBuilder;
 use Pollora\Role\Application\Services\RoleRegistry;
+use Pollora\Role\Domain\Exceptions\InvalidRoleDefinitionException;
 use Pollora\Role\Domain\Models\RoleDefinition;
 use Pollora\Role\Infrastructure\Adapters\WordPressRoleInjector;
 use Psr\Log\LoggerInterface;
@@ -73,14 +74,25 @@ final class RoleDiscovery implements DiscoveryInterface
 
     public function apply(): void
     {
-        foreach ($this->getItems() as ['class' => $class, 'kind' => $kind]) {
+        foreach ($this->getItems() as $item) {
+            // discover() stores arrays of a class name and a kind; anything else is not ours.
+            if (! is_array($item) || ! is_string($item['class'] ?? null) || ! is_string($item['kind'] ?? null)) {
+                continue;
+            }
+
+            $class = $item['class'];
+            $kind = $item['kind'];
+
+            if (! class_exists($class) && ! enum_exists($class)) {
+                $this->logger?->error(sprintf('Failed to register the role declaration %s: the class cannot be loaded.', $class));
+
+                continue;
+            }
+
             try {
                 match ($kind) {
                     'role' => $this->addRole($class),
-                    'capabilitySet' => $this->registry->addCapabilitySet(array_values(array_map(
-                        static fn (BackedEnum $case): string => (string) $case->value,
-                        $class::cases()
-                    ))),
+                    'capabilitySet' => $this->registry->addCapabilitySet($this->valuesOf($class)),
                     'postType' => $this->registry->addPostType($class),
                     'taxonomy' => $this->registry->addTaxonomy($class),
                 };
@@ -95,6 +107,23 @@ final class RoleDiscovery implements DiscoveryInterface
     public function getIdentifier(): string
     {
         return 'roles';
+    }
+
+    /**
+     * The values of a backed enum of capabilities.
+     *
+     * @param  class-string  $enum
+     * @return list<string>
+     *
+     * @throws InvalidRoleDefinitionException When the enum is not backed
+     */
+    private function valuesOf(string $enum): array
+    {
+        if (! is_a($enum, BackedEnum::class, true)) {
+            throw InvalidRoleDefinitionException::forClass($enum, '#[CapabilitySet] needs a backed enum.');
+        }
+
+        return array_values(array_map(static fn (BackedEnum $case): string => (string) $case->value, $enum::cases()));
     }
 
     /**

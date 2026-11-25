@@ -64,6 +64,20 @@ it('reads the roles another plugin stored loosely in the shape the compiler work
         ->and($wpRoles->roles['author'])->toBe($this->stored['author']);
 });
 
+it('keeps the marker Pollora wrote and drops what is not of the type it writes', function (): void {
+    $wpRoles = wpRolesWith([
+        'administrator' => ['name' => 'Administrator', 'capabilities' => ['manage_options' => true]],
+        'author' => ['name' => 'Author', 'capabilities' => ['read' => true, 'extra' => true], '_pollora' => ['granted' => ['extra', 7], 'removed' => ['publish_posts' => 1], 'managed' => 'yes']],
+        'odd' => ['name' => 'Odd', 'capabilities' => [], '_pollora' => 'garbage'],
+    ]);
+
+    $this->injector->inject($wpRoles);
+
+    // The marker was read as {granted: [extra], removed: {publish_posts: true}}, then undone: the grant is gone, the removal restored.
+    expect($wpRoles->roles['author'])->toBe(['name' => 'Author', 'capabilities' => ['read' => true, 'publish_posts' => true]])
+        ->and($wpRoles->roles['odd'])->toBe(['name' => 'Odd', 'capabilities' => []]);
+});
+
 it('leaves WP_Roles alone when the project declares nothing', function (): void {
     $wpRoles = wpRolesWith($this->stored);
 

@@ -127,7 +127,7 @@ final class WordPressRoleInjector
      * for true), and the marker Pollora keeps is carried over.
      *
      * @param  array<array-key, mixed>  $roles
-     * @return array<string, array{name: string, capabilities: array<string, bool>, _pollora?: array<string, mixed>}>
+     * @return array<string, array{name: string, capabilities: array<string, bool>, _pollora?: array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}}>
      */
     private function storedRoles(array $roles): array
     {
@@ -146,8 +146,10 @@ final class WordPressRoleInjector
                 'capabilities' => $capabilities,
             ];
 
-            if (is_array($role[RoleCompiler::MARKER] ?? null)) {
-                $entry[RoleCompiler::MARKER] = $role[RoleCompiler::MARKER];
+            $marker = $this->markerOf($role[RoleCompiler::MARKER] ?? null);
+
+            if ($marker !== null) {
+                $entry[RoleCompiler::MARKER] = $marker;
             }
 
             $stored[(string) $slug] = $entry;
@@ -157,12 +159,48 @@ final class WordPressRoleInjector
     }
 
     /**
+     * The marker Pollora keeps in a role entry, as it wrote it: what is not of the expected type is dropped.
+     *
+     * @return array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}|null Null when there is no marker
+     */
+    private function markerOf(mixed $marker): ?array
+    {
+        if (! is_array($marker)) {
+            return null;
+        }
+
+        $normalized = [];
+
+        if (($marker['managed'] ?? false) === true) {
+            $normalized['managed'] = true;
+        }
+
+        $granted = array_values(array_filter(is_array($marker['granted'] ?? null) ? $marker['granted'] : [], is_string(...)));
+
+        if ($granted !== []) {
+            $normalized['granted'] = $granted;
+        }
+
+        $removed = [];
+
+        foreach (is_array($marker['removed'] ?? null) ? $marker['removed'] : [] as $capability => $value) {
+            $removed[(string) $capability] = (bool) $value;
+        }
+
+        if ($removed !== []) {
+            $normalized['removed'] = $removed;
+        }
+
+        return $normalized;
+    }
+
+    /**
      * @param  array<array-key, mixed>  $roles
      */
     private function hasMarkedRoles(array $roles): bool
     {
         foreach ($roles as $role) {
-            if (isset($role[RoleCompiler::MARKER])) {
+            if (is_array($role) && isset($role[RoleCompiler::MARKER])) {
                 return true;
             }
         }

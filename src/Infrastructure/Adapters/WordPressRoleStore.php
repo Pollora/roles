@@ -14,9 +14,18 @@ final readonly class WordPressRoleStore implements RoleStoreInterface
 {
     public function storedRoles(): array
     {
-        $roles = \get_option($this->optionName(), []);
+        $option = \get_option($this->optionName(), []);
+        $roles = [];
 
-        return is_array($roles) ? $roles : [];
+        foreach (is_array($option) ? $option : [] as $slug => $role) {
+            if (! is_array($role)) {
+                continue;
+            }
+
+            $roles[(string) $slug] = array_combine(array_map(strval(...), array_keys($role)), $role);
+        }
+
+        return $roles;
     }
 
     public function saveStoredRoles(array $roles): void
