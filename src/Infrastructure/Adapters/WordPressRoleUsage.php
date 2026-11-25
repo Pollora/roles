@@ -61,7 +61,7 @@ final class WordPressRoleUsage implements RoleUsageInterface
 
         /** @var list<object{user_id: string, meta_value: string}> $rows */
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT user_id, meta_value FROM {$wpdb->usermeta} WHERE meta_key = %s",
+            "SELECT user_id, meta_value FROM {$wpdb->usermeta} WHERE meta_key = %s", // @phpstan-ignore argument.type (the only interpolated part is the $wpdb->usermeta table name, never request input; the meta key is bound with %s)
             $wpdb->get_blog_prefix().'capabilities'
         ));
 
