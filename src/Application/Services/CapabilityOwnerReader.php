@@ -37,10 +37,18 @@ final class CapabilityOwnerReader
         $capabilityType = $reflection->getAttributes(CapabilityType::class)[0] ?? null;
         $capabilities = $reflection->getAttributes(PostTypeCapabilities::class)[0] ?? null;
 
+        $overrides = [];
+
+        foreach ($capabilities?->newInstance()->value ?? [] as $key => $capability) {
+            if (is_string($capability)) {
+                $overrides[(string) $key] = $capability;
+            }
+        }
+
         return [
             'slug' => $postType->newInstance()->resolveSlug($class),
             'capabilityType' => $capabilityType?->newInstance()->value,
-            'overrides' => $capabilities?->newInstance()->value ?? [],
+            'overrides' => $overrides,
         ];
     }
 
@@ -64,7 +72,7 @@ final class CapabilityOwnerReader
 
         return [
             'slug' => $taxonomy->newInstance()->resolveSlug($class),
-            'capabilities' => array_values(array_intersect_key($map, array_flip(self::TERM_CAPABILITIES))),
+            'capabilities' => array_values(array_filter(array_intersect_key($map, array_flip(self::TERM_CAPABILITIES)), is_string(...))),
         ];
     }
 }
