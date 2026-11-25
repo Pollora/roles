@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Pollora\Role;
 
 use BackedEnum;
+use LogicException;
 use Pollora\Role\Application\Services\CapabilityOwnerReader;
 use Pollora\Role\Application\Services\RoleDeclaration;
 use Pollora\Role\Application\Services\RoleDeclarer;
@@ -101,7 +102,7 @@ final class Role
     {
         self::manager();
 
-        return self::$declarer;
+        return self::$declarer ?? throw new LogicException('The role declarer is built with the registry: Role::reset() ran between the two.');
     }
 
     private static function build(): RoleRegistry
