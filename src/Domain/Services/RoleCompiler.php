@@ -25,7 +25,8 @@ use Pollora\Role\Domain\Models\RoleModification;
  *
  * Compiling an already compiled set of roles gives the same result.
  *
- * @phpstan-type StoredRole array{name: string, capabilities: array<string, bool>, _pollora?: array<string, mixed>}
+ * @phpstan-type Marker array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}
+ * @phpstan-type StoredRole array{name: string, capabilities: array<string, bool>, _pollora?: Marker}
  */
 final class RoleCompiler
 {
