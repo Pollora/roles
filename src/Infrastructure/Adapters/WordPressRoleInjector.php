@@ -58,7 +58,7 @@ final class WordPressRoleInjector
         }
 
         $roles = $this->compiler->compile(
-            $wpRoles->roles,
+            $this->storedRoles($wpRoles->roles),
             $this->registry->definitions($warn),
             $this->registry->modifications($warn),
             $this->superRoles,
@@ -122,7 +122,42 @@ final class WordPressRoleInjector
     }
 
     /**
-     * @param  array<string, array<string, mixed>>  $roles
+     * The roles WordPress holds, in the shape the compiler works with. WordPress types them loosely (`array[]`):
+     * a role without a name takes its slug, a capability is granted when its value is truthy (a plugin may store 1
+     * for true), and the marker Pollora keeps is carried over.
+     *
+     * @param  array<array-key, mixed>  $roles
+     * @return array<string, array{name: string, capabilities: array<string, bool>, _pollora?: array<string, mixed>}>
+     */
+    private function storedRoles(array $roles): array
+    {
+        $stored = [];
+
+        foreach ($roles as $slug => $role) {
+            $role = is_array($role) ? $role : [];
+            $capabilities = [];
+
+            foreach (is_array($role['capabilities'] ?? null) ? $role['capabilities'] : [] as $capability => $granted) {
+                $capabilities[(string) $capability] = (bool) $granted;
+            }
+
+            $entry = [
+                'name' => is_string($role['name'] ?? null) ? $role['name'] : (string) $slug,
+                'capabilities' => $capabilities,
+            ];
+
+            if (is_array($role[RoleCompiler::MARKER] ?? null)) {
+                $entry[RoleCompiler::MARKER] = $role[RoleCompiler::MARKER];
+            }
+
+            $stored[(string) $slug] = $entry;
+        }
+
+        return $stored;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $roles
      */
     private function hasMarkedRoles(array $roles): bool
     {
