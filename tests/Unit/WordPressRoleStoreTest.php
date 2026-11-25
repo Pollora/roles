@@ -53,3 +53,12 @@ it('takes a role WordPress no longer knows off a user through remove_cap()', fun
     $store->removeFromUser(3, 'event_manager');
     $store->addRoleToUser(3, 'subscriber');
 });
+
+it('keeps only the roles that are arrays when it reads the option', function (string|array $option, array $expected): void {
+    Functions\when('get_option')->justReturn($option);
+
+    expect((new WordPressRoleStore)->storedRoles())->toBe($expected);
+})->with([
+    'not an array' => ['corrupted', []],
+    'a role that is not an array' => [['editor' => ['name' => 'Editor'], 'broken' => 'x'], ['editor' => ['name' => 'Editor']]],
+]);
