@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Pollora\Attributes\CapabilitySet;
 use Pollora\Attributes\Role;
 use Pollora\Discovery\Domain\Models\DiscoveryLocation;
 use Pollora\Role\Application\Services\CapabilityOwnerReader;
@@ -27,6 +28,12 @@ require_once dirname(__DIR__).'/Fixtures/wordpress-roles.php';
 
 #[Role('abstract_role')]
 abstract class AbstractRoleDeclaration {}
+
+#[CapabilitySet]
+enum UnbackedCapabilities
+{
+    case Read;
+}
 
 #[Role('not_an_enum_set')]
 enum RoleOnAnEnum: string
@@ -94,4 +101,31 @@ it('logs a declaration it cannot register and carries on', function (): void {
 
 it('identifies itself as roles', function (): void {
     expect($this->discovery->getIdentifier())->toBe('roles');
+});
+
+it('ignores a stored item that is not a class name and a kind', function (): void {
+    $this->discovery->getItems()->add($this->location, ['kind' => 'role']);
+    $this->discovery->getItems()->add($this->location, ['class' => EventManager::class]);
+
+    $this->discovery->apply();
+
+    expect($this->registry->isEmpty())->toBeTrue();
+});
+
+it('logs a declaration whose class cannot be loaded', function (): void {
+    $this->logger->shouldReceive('error')->once()->with('Failed to register the role declaration Tests\\Gone: the class cannot be loaded.');
+    $this->discovery->getItems()->add($this->location, ['class' => 'Tests\\Gone', 'kind' => 'role']);
+
+    $this->discovery->apply();
+
+    expect($this->registry->isEmpty())->toBeTrue();
+});
+
+it('logs a capability set that is not a backed enum', function (): void {
+    $this->logger->shouldReceive('error')->once()->with(Mockery::pattern('/UnbackedCapabilities: #\[CapabilitySet\] needs a backed enum/'), Mockery::type('array'));
+    ($this->discover)(UnbackedCapabilities::class);
+
+    $this->discovery->apply();
+
+    expect($this->registry->isEmpty())->toBeTrue();
 });
