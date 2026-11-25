@@ -115,7 +115,7 @@ final readonly class RoleDefinitionBuilder
             $modifyRole instanceof ModifyRole,
             $class,
         );
-        $declaration->allowSensitive($role->allowSensitive ?? $modifyRole->allowSensitive);
+        $declaration->allowSensitive($role instanceof Role ? $role->allowSensitive : $modifyRole->allowSensitive);
 
         if ($role instanceof Role) {
             if ($role->inherits !== null) {
