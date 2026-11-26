@@ -54,11 +54,27 @@ it('takes a role WordPress no longer knows off a user through remove_cap()', fun
     $store->addRoleToUser(3, 'subscriber');
 });
 
-it('keeps only the roles that are arrays when it reads the option', function (string|array $option, array $expected): void {
-    Functions\when('get_option')->justReturn($option);
+it('reads an option that is not an array as no role', function (): void {
+    Functions\when('get_option')->justReturn('corrupted');
 
-    expect((new WordPressRoleStore)->storedRoles())->toBe($expected);
-})->with([
-    'not an array' => ['corrupted', []],
-    'a role that is not an array' => [['editor' => ['name' => 'Editor'], 'broken' => 'x'], ['editor' => ['name' => 'Editor']]],
-]);
+    expect((new WordPressRoleStore)->storedRoles())->toBe([]);
+});
+
+it('writes back everything it read, entries and keys it does not know included', function (): void {
+    $option = [
+        'editor' => ['name' => 'Editor', 'capabilities' => ['read' => 1, 'edit_posts' => '0'], 'plugin_data' => ['color' => 'red']],
+        'broken' => 'x',
+    ];
+    $written = null;
+    Functions\when('get_option')->justReturn($option);
+    Functions\when('update_option')->alias(function (string $name, array $roles) use (&$written): bool {
+        $written = $roles;
+
+        return true;
+    });
+    $store = new WordPressRoleStore;
+
+    $store->saveStoredRoles($store->storedRoles());
+
+    expect($written)->toBe($option);
+});

@@ -25,8 +25,11 @@ use Pollora\Role\Domain\Models\RoleModification;
  *
  * Compiling an already compiled set of roles gives the same result.
  *
- * @phpstan-type Marker array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}
- * @phpstan-type StoredRole array{name: string, capabilities: array<string, bool>, _pollora?: Marker}
+ * A stored entry may carry keys of other plugins, and capability values that are not booleans (1 for true): both are
+ * the database's, and are carried over as they are.
+ *
+ * @phpstan-type Marker array{managed?: bool, granted?: list<string>, removed?: array<array-key, mixed>}
+ * @phpstan-type StoredRole array{name: string, capabilities: array<array-key, mixed>, _pollora?: Marker}
  */
 final class RoleCompiler
 {
@@ -129,10 +132,10 @@ final class RoleCompiler
     /**
      * @param  array<string, RoleDefinition>  $declared
      * @param  array<string, StoredRole>  $roles
-     * @param  array<string, array<string, bool>>  $resolved  Memo of capabilities already resolved
+     * @param  array<string, array<array-key, mixed>>  $resolved  Memo of capabilities already resolved
      * @param  Closure(string): void|null  $warn
      * @param  list<string>  $resolving  Slugs being resolved, to stop a cycle
-     * @return array<string, bool>
+     * @return array<array-key, mixed>
      */
     private function capabilitiesOf(string $slug, array $declared, array $roles, array &$resolved, ?Closure $warn, array $resolving = []): array
     {

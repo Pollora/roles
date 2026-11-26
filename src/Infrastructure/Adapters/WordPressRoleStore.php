@@ -15,15 +15,11 @@ final readonly class WordPressRoleStore implements RoleStoreInterface
     public function storedRoles(): array
     {
         $option = \get_option($this->optionName(), []);
-        $roles = [];
 
-        foreach (is_array($option) ? $option : [] as $slug => $role) {
-            if (! is_array($role)) {
-                continue;
-            }
-
-            $roles[(string) $slug] = array_combine(array_map(strval(...), array_keys($role)), $role);
-        }
+        // Returned as stored, nothing filtered or rebuilt: what is read here is what saveStoredRoles() writes back.
+        // The shape asserted is the one WordPress writes in this option.
+        /** @var array<string, array<string, mixed>> $roles */
+        $roles = is_array($option) ? $option : [];
 
         return $roles;
     }
