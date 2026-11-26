@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-26
+
 ### Fixed
 
 - Roles injected into `WP_Roles` keep every key and every value of the stored entry: keys another plugin added, capability values such as `1`, and the original values Pollora restores. WordPress saves the whole array on the next `add_cap()` or `remove_cap()`, so rebuilding the entries could lose data. `WordPressRoleStore::storedRoles()` returns the option without dropping any entry. This regression was never released
