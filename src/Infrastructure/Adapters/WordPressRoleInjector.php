@@ -21,6 +21,8 @@ use WP_Roles;
  * are only known once its files are included, after WordPress has its roles
  * and often after the current user's capabilities are computed: refresh()
  * injects them into the existing instance and recomputes those capabilities.
+ *
+ * @phpstan-import-type StoredRole from RoleCompiler
  */
 final class WordPressRoleInjector
 {
@@ -57,8 +59,14 @@ final class WordPressRoleInjector
             $warn($refusal);
         }
 
+        // The entries go to the compiler as WordPress holds them, never rebuilt: WordPress saves the whole array on the
+        // next add_cap(), so a key or a value lost here would be lost from the database. WordPress types them `array[]`;
+        // the shape asserted is the one its own WP_Roles relies on.
+        /** @var array<string, StoredRole> $stored */
+        $stored = $wpRoles->roles;
+
         $roles = $this->compiler->compile(
-            $this->storedRoles($wpRoles->roles),
+            $stored,
             $this->registry->definitions($warn),
             $this->registry->modifications($warn),
             $this->superRoles,
@@ -71,8 +79,7 @@ final class WordPressRoleInjector
         $wpRoles->role_names = [];
 
         foreach ($roles as $slug => $role) {
-            $wpRoles->role_objects[$slug] = new WP_Role($slug, $role['capabilities']);
-            $wpRoles->role_names[$slug] = $role['name'];
+            $this->register($wpRoles, (string) $slug, $role);
         }
     }
 
@@ -122,76 +129,16 @@ final class WordPressRoleInjector
     }
 
     /**
-     * The roles WordPress holds, in the shape the compiler works with. WordPress types them loosely (`array[]`):
-     * a role without a name takes its slug, a capability is granted when its value is truthy (a plugin may store 1
-     * for true), and the marker Pollora keeps is carried over.
-     *
-     * @param  array<array-key, mixed>  $roles
-     * @return array<string, array{name: string, capabilities: array<string, bool>, _pollora?: array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}}>
+     * Puts the role object and the name of one entry in place. `WP_Roles::$roles` keeps the entry as it is: what is
+     * derived here (a name taken from the slug, capabilities read as booleans) is never saved.
      */
-    private function storedRoles(array $roles): array
+    private function register(WP_Roles $wpRoles, string $slug, mixed $role): void
     {
-        $stored = [];
+        $role = is_array($role) ? $role : [];
+        $capabilities = is_array($role['capabilities'] ?? null) ? $role['capabilities'] : [];
 
-        foreach ($roles as $slug => $role) {
-            $role = is_array($role) ? $role : [];
-            $capabilities = [];
-
-            foreach (is_array($role['capabilities'] ?? null) ? $role['capabilities'] : [] as $capability => $granted) {
-                $capabilities[(string) $capability] = (bool) $granted;
-            }
-
-            $entry = [
-                'name' => is_string($role['name'] ?? null) ? $role['name'] : (string) $slug,
-                'capabilities' => $capabilities,
-            ];
-
-            $marker = $this->markerOf($role[RoleCompiler::MARKER] ?? null);
-
-            if ($marker !== null) {
-                $entry[RoleCompiler::MARKER] = $marker;
-            }
-
-            $stored[(string) $slug] = $entry;
-        }
-
-        return $stored;
-    }
-
-    /**
-     * The marker Pollora keeps in a role entry, as it wrote it: what is not of the expected type is dropped.
-     *
-     * @return array{managed?: bool, granted?: list<string>, removed?: array<string, bool>}|null Null when there is no marker
-     */
-    private function markerOf(mixed $marker): ?array
-    {
-        if (! is_array($marker)) {
-            return null;
-        }
-
-        $normalized = [];
-
-        if (($marker['managed'] ?? false) === true) {
-            $normalized['managed'] = true;
-        }
-
-        $granted = array_values(array_filter(is_array($marker['granted'] ?? null) ? $marker['granted'] : [], is_string(...)));
-
-        if ($granted !== []) {
-            $normalized['granted'] = $granted;
-        }
-
-        $removed = [];
-
-        foreach (is_array($marker['removed'] ?? null) ? $marker['removed'] : [] as $capability => $value) {
-            $removed[(string) $capability] = (bool) $value;
-        }
-
-        if ($removed !== []) {
-            $normalized['removed'] = $removed;
-        }
-
-        return $normalized;
+        $wpRoles->role_objects[$slug] = new WP_Role($slug, array_map(boolval(...), $capabilities));
+        $wpRoles->role_names[$slug] = is_string($role['name'] ?? null) ? $role['name'] : $slug;
     }
 
     /**

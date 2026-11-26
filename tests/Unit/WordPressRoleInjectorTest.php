@@ -6,6 +6,8 @@ use Brain\Monkey\Functions;
 use Pollora\Role\Application\Services\CapabilityOwnerReader;
 use Pollora\Role\Application\Services\RoleDefinitionBuilder;
 use Pollora\Role\Application\Services\RoleRegistry;
+use Pollora\Role\Domain\Models\RoleChanges;
+use Pollora\Role\Domain\Models\RoleModification;
 use Pollora\Role\Domain\Services\PostTypeCapabilityMap;
 use Pollora\Role\Domain\Services\RoleCompiler;
 use Pollora\Role\Infrastructure\Adapters\WordPressRoleInjector;
@@ -49,33 +51,75 @@ it('puts the compiled roles, role objects and names into WP_Roles', function ():
         ->and($wpRoles->role_objects['event_manager']->capabilities)->not->toHaveKey('publish_posts');
 });
 
-it('reads the roles another plugin stored loosely in the shape the compiler works with', function (): void {
+it('keeps every key and value of a stored entry through two compilations', function (): void {
+    $this->registry->addCapabilitySet(['scan_tickets']);
+    $this->registry->addModification(new RoleModification('shop', new RoleChanges(['export'], ['upload_files']), 'Class\\ModifyShop'));
+
+    $shop = ['name' => 'Shop', 'capabilities' => ['read' => 1, 'upload_files' => 1, 'edit_posts' => 0], 'plugin_data' => ['color' => 'red']];
+    $wpRoles = wpRolesWith([...$this->stored, 'shop' => $shop]);
+    $injector = new WordPressRoleInjector($this->registry, new RoleCompiler, ['shop']);
+
+    $injector->inject($wpRoles);
+    // What WordPress saves on the next add_cap() is read again by the next request
+    $injector->inject($wpRoles);
+
+    expect($wpRoles->roles['shop'])->toBe([
+        'name' => 'Shop',
+        'capabilities' => ['read' => 1, 'edit_posts' => 0, 'export' => true, 'scan_tickets' => true],
+        'plugin_data' => ['color' => 'red'],
+        '_pollora' => ['granted' => ['export', 'scan_tickets'], 'removed' => ['upload_files' => 1]],
+    ])
+        ->and($wpRoles->role_objects['shop']->capabilities)->toBe(['read' => true, 'edit_posts' => false, 'export' => true, 'scan_tickets' => true]);
+});
+
+it('gives back the original entry once the code no longer changes it', function (): void {
+    $shop = ['name' => 'Shop', 'capabilities' => ['read' => 1, 'upload_files' => 1], 'plugin_data' => ['color' => 'red']];
+    $wpRoles = wpRolesWith(['shop' => [
+        ...$shop,
+        'capabilities' => ['read' => 1, 'export' => true],
+        '_pollora' => ['removed' => ['upload_files' => 1], 'granted' => ['export']],
+    ]]);
+
+    $this->injector->inject($wpRoles);
+
+    expect($wpRoles->roles['shop'])->toBe($shop);
+});
+
+it('does not take over a capability the role stores as 1, so dropping the grant keeps it', function (): void {
+    $shop = ['name' => 'Shop', 'capabilities' => ['read' => 1]];
+    $this->registry->addModification(new RoleModification('shop', new RoleChanges(['read'], []), 'Class\\ModifyShop'));
+    $wpRoles = wpRolesWith(['shop' => $shop]);
+    $this->injector->inject($wpRoles);
+    $saved = $wpRoles->roles;
+    $nothingDeclared = new WordPressRoleInjector(new RoleRegistry(new CapabilityOwnerReader, new PostTypeCapabilityMap), new RoleCompiler);
+    $next = wpRolesWith($saved);
+
+    $nothingDeclared->inject($next);
+
+    expect($saved['shop'])->toBe($shop)
+        ->and($next->roles['shop'])->toBe($shop);
+});
+
+it('registers an entry without a name or capabilities, leaving the entry as stored', function (): void {
     $this->registry->addRole((new RoleDefinitionBuilder(new CapabilityOwnerReader))->build(EventManager::class));
     $wpRoles = wpRolesWith([
         ...$this->stored,
-        'legacy' => ['capabilities' => ['read' => 1, 'edit_posts' => 0]],
+        'legacy' => ['capabilities' => ['read' => 1]],
+        'bare' => ['name' => 'Bare'],
         'broken' => 'not a role',
     ]);
 
     $this->injector->inject($wpRoles);
 
-    expect($wpRoles->roles['legacy'])->toBe(['name' => 'legacy', 'capabilities' => ['read' => true, 'edit_posts' => false]])
-        ->and($wpRoles->roles['broken'])->toBe(['name' => 'broken', 'capabilities' => []])
-        ->and($wpRoles->roles['author'])->toBe($this->stored['author']);
-});
-
-it('keeps the marker Pollora wrote and drops what is not of the type it writes', function (): void {
-    $wpRoles = wpRolesWith([
-        'administrator' => ['name' => 'Administrator', 'capabilities' => ['manage_options' => true]],
-        'author' => ['name' => 'Author', 'capabilities' => ['read' => true, 'extra' => true], '_pollora' => ['granted' => ['extra', 7], 'removed' => ['publish_posts' => 1], 'managed' => 'yes']],
-        'odd' => ['name' => 'Odd', 'capabilities' => [], '_pollora' => 'garbage'],
-    ]);
-
-    $this->injector->inject($wpRoles);
-
-    // The marker was read as {granted: [extra], removed: {publish_posts: true}}, then undone: the grant is gone, the removal restored.
-    expect($wpRoles->roles['author'])->toBe(['name' => 'Author', 'capabilities' => ['read' => true, 'publish_posts' => true]])
-        ->and($wpRoles->roles['odd'])->toBe(['name' => 'Odd', 'capabilities' => []]);
+    expect($wpRoles->roles['legacy'])->toBe(['capabilities' => ['read' => 1]])
+        ->and($wpRoles->roles['bare'])->toBe(['name' => 'Bare'])
+        ->and($wpRoles->roles['broken'])->toBe('not a role')
+        ->and($wpRoles->role_names['legacy'])->toBe('legacy')
+        ->and($wpRoles->role_names['bare'])->toBe('Bare')
+        ->and($wpRoles->role_names['broken'])->toBe('broken')
+        ->and($wpRoles->role_objects['legacy']->capabilities)->toBe(['read' => true])
+        ->and($wpRoles->role_objects['bare']->capabilities)->toBe([])
+        ->and($wpRoles->role_objects['broken']->capabilities)->toBe([]);
 });
 
 it('leaves WP_Roles alone when the project declares nothing', function (): void {
