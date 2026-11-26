@@ -85,6 +85,21 @@ it('gives back the original entry once the code no longer changes it', function 
     expect($wpRoles->roles['shop'])->toBe($shop);
 });
 
+it('does not take over a capability the role stores as 1, so dropping the grant keeps it', function (): void {
+    $shop = ['name' => 'Shop', 'capabilities' => ['read' => 1]];
+    $this->registry->addModification(new RoleModification('shop', new RoleChanges(['read'], []), 'Class\\ModifyShop'));
+    $wpRoles = wpRolesWith(['shop' => $shop]);
+    $this->injector->inject($wpRoles);
+    $saved = $wpRoles->roles;
+    $nothingDeclared = new WordPressRoleInjector(new RoleRegistry(new CapabilityOwnerReader, new PostTypeCapabilityMap), new RoleCompiler);
+    $next = wpRolesWith($saved);
+
+    $nothingDeclared->inject($next);
+
+    expect($saved['shop'])->toBe($shop)
+        ->and($next->roles['shop'])->toBe($shop);
+});
+
 it('registers an entry without a name or capabilities, leaving the entry as stored', function (): void {
     $this->registry->addRole((new RoleDefinitionBuilder(new CapabilityOwnerReader))->build(EventManager::class));
     $wpRoles = wpRolesWith([

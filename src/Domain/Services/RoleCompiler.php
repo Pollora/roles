@@ -198,7 +198,8 @@ final class RoleCompiler
     }
 
     /**
-     * Grants capabilities, remembering those the role did not already have.
+     * Grants capabilities, remembering those the role did not already have. A role has a capability when its value
+     * is not empty, as `WP_Role::has_cap()` reads it: a stored 1 is the role's own, not a grant to undo later.
      *
      * @param  StoredRole  $role
      * @param  list<string>  $capabilities
@@ -208,7 +209,7 @@ final class RoleCompiler
         $managed = ($role[self::MARKER]['managed'] ?? false) === true;
 
         foreach ($capabilities as $capability) {
-            if (($role['capabilities'][$capability] ?? false) === true) {
+            if (! empty($role['capabilities'][$capability])) {
                 continue;
             }
 
